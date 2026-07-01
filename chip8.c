@@ -48,8 +48,8 @@ void decode_chip8(Chip8* chip8) {
 	uint16_t operation = (chip8->opcode & 0xF000) >> 12;
 
 	uint16_t X, Y, N, NN, NNN;
-	X = (uint8_t)(chip8->opcode & 0x0F00) >> 8;
-	Y = (uint8_t)(chip8->opcode & 0x00F0) >> 4;
+	X = (uint8_t)((chip8->opcode & 0x0F00) >> 8);
+	Y = (uint8_t)((chip8->opcode & 0x00F0) >> 4);
 	N = (uint8_t)chip8->opcode & 0x000F;
 	NN = (uint8_t)chip8->opcode & 0x00FF;
 	NNN = chip8->opcode & 0x0FFF;
@@ -106,18 +106,39 @@ void decode_chip8(Chip8* chip8) {
 			break;
 		case 0xD:
 			// Display
-			// TODO
+			
+			// first initialize start coordonates
+			uint8_t Xc = chip8->V[X];
+			uint8_t Yc = chip8->V[Y];
+
+			// Draw
+			chip8->V[0xF] = 0;
+			for(int i = 0; i < N; i++){
+				uint8_t mask = 0x80;
+				for(int j = 0; j < 8; j++){
+					if(chip8->memory[chip8->I + i] & mask){
+						uint16_t memC = (Xc + j) % 64 + ((Yc + i) % 32) * 64;
+						chip8->video[memC] ^= 1;
+						if(chip8->video[memC] == 0)
+							chip8->V[0xF] = 1;
+					}
+					mask >>= 1;
+				}
+			}
+
 			break;
 		case 0:
 			switch(chip8->opcode) {
 				case 0x00E0:
-					// Clear TODO
+					// Clear
+					memset(chip8->video, 0, sizeof(chip8->video));
 					break;
 				case 0x00EE:
 					// Return
-					chip8->pc = chip8->stack[chip8->sp--];
+					chip8->pc = chip8->stack[--chip8->sp];
 					break;
 			}
+			break;
 		case 8:
 			switch(N){
 				case 0:
@@ -135,12 +156,12 @@ void decode_chip8(Chip8* chip8) {
 				case 4:
 					if(chip8->V[Y] + chip8->V[X] < chip8->V[X])
 						chip8->V[0xF] = 1;
-					chip8->V[0xF] = 0;
+					else chip8->V[0xF] = 0;
 					break;
 				case 5:
 					if(chip8->V[X] - chip8->V[Y] > chip8->V[X])
 						chip8->V[0xF] = 0;
-					chip8->V[0xF] = 1;
+					else chip8->V[0xF] = 1;
 					break;
 				case 6:
 					chip8->V[0xF] = chip8->V[X] | 0x0001;
@@ -152,18 +173,18 @@ void decode_chip8(Chip8* chip8) {
 					else chip8->V[0xF] = 1;
 					chip8->V[X] -= chip8->V[Y];
 					break;
-				case 8:
-					chip8->V[0xF] = chip8->V[X] | 0x1000;
+				case 0xE:
+					chip8->V[0xF] = chip8->V[X] | 0x80;
 					chip8->V[X] <<= 1;
 					break;
 			}
+			break;
 		case 0xE:
 			if(NN == 0x9E && chip8->keypad[chip8->V[X]] == 1)
-				// Omite instructiunea urmatoare
 				chip8->pc += 2;
 			else if(NN == 0xA1 && chip8->keypad[chip8->V[X]] == 0)
-				// Omite instructiunea urmatoare
 				chip8->pc += 2;
+			break;
 		case 0xF:
 			switch(NN) {
 				case 0x07:
@@ -179,10 +200,14 @@ void decode_chip8(Chip8* chip8) {
 					chip8->I += chip8->V[X];
 					break;
 				case 0x29:
-					// TODO : chip8->I = Adresa de memorie a spriteului coresp caracterului hexazecimal stocat in VX
+					// Load Font
+					chip8->I = chip8->V[X] * 5 + 0x50;
 					break;
 				case 0x33:
-					// TODO
+					// Binary Coded Decimal
+					chip8->memory[chip8->I] = chip8->V[X] / 100;
+					chip8->memory[chip8->I + 1] = (chip8->V[X] / 10) % 10;
+					chip8->memory[chip8->I + 2] = chip8->V[X] % 10;
 					break;
 				case 0x55:
 					for(int i = chip8->I; i <= chip8->I + chip8->V[X]; i++){
@@ -195,5 +220,6 @@ void decode_chip8(Chip8* chip8) {
 					}
 					break;
 			}
+		break;
 	}
 }
