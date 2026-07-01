@@ -1,5 +1,6 @@
 // emulator structure and function prototypes
 #include <stdint.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
@@ -37,4 +38,6 @@ uint8_t load_chip8(Chip8* chip8, char* path);
 and increases op by 2 */
 void fetch_chip8(Chip8* chip8);
 
-void decode_chip8(Chip8* chip8);
+/* decode the operation in opcode and
+compute the instruction */
+void decode_execute_chip8(Chip8* chip8);

@@ -1,6 +1,25 @@
 // processor logic
 #include "chip8.h"
 
+static uint8_t chip8_fontset[80] = {
+    0xF0, 0x90, 0x90, 0x90, 0xF0,
+    0x20, 0x60, 0x20, 0x20, 0x70,
+    0xF0, 0x10, 0xF0, 0x80, 0xF0,
+    0xF0, 0x10, 0xF0, 0x10, 0xF0,
+    0x90, 0x90, 0xF0, 0x10, 0x10,
+    0xF0, 0x80, 0xF0, 0x10, 0xF0,
+    0xF0, 0x80, 0xF0, 0x90, 0xF0,
+    0xF0, 0x10, 0x20, 0x40, 0x40,
+    0xF0, 0x90, 0xF0, 0x90, 0xF0,
+    0xF0, 0x90, 0xF0, 0x10, 0xF0,
+    0xF0, 0x90, 0xF0, 0x90, 0x90,
+    0xE0, 0x90, 0xE0, 0x90, 0xE0,
+    0xF0, 0x80, 0x80, 0x80, 0xF0,
+    0xE0, 0x90, 0x90, 0x90, 0xE0,
+    0xF0, 0x80, 0xF0, 0x80, 0xF0,
+    0xF0, 0x80, 0xF0, 0x80, 0x80 
+};
+
 void init_chip8(Chip8* chip8) {
 
     // zero out whole structure
@@ -9,14 +28,15 @@ void init_chip8(Chip8* chip8) {
     // program counter initialized to 0x200
     chip8->pc = 0x200;
 
-    // TODO : load fonts into stack
+    // load fonts into stack
+	memcpy(chip8->memory + 0x50, chip8_fontset, sizeof(chip8_fontset));
 }
 
-int load_chip8(Chip8* chip8, char* path){
+uint8_t load_chip8(Chip8* chip8, char* path){
 
     FILE *ptr;
 
-    ptr = fopen(path, "r");
+    ptr = fopen(path, "rb");
 
 	if(!ptr) return 0;
 
@@ -44,7 +64,7 @@ void fetch_chip8(Chip8* chip8){
 	chip8->pc += 2;
 }
 
-void decode_chip8(Chip8* chip8) {
+void decode_execute_chip8(Chip8* chip8) {
 	uint16_t operation = (chip8->opcode & 0xF000) >> 12;
 
 	uint16_t X, Y, N, NN, NNN;
@@ -53,6 +73,7 @@ void decode_chip8(Chip8* chip8) {
 	N = (uint8_t)chip8->opcode & 0x000F;
 	NN = (uint8_t)chip8->opcode & 0x00FF;
 	NNN = chip8->opcode & 0x0FFF;
+	uint8_t x = chip8->V[X], y = chip8->V[Y];
 
 	switch (operation) {
 		case 1:
@@ -102,7 +123,7 @@ void decode_chip8(Chip8* chip8) {
 			break;
 		case 0xC:
 			// Random
-			chip8->V[X] = ((uint8_t)(rand() % 255)) & NN;
+			chip8->V[X] = ((uint8_t)(rand() % 256)) & NN;
 			break;
 		case 0xD:
 			// Display
@@ -118,7 +139,7 @@ void decode_chip8(Chip8* chip8) {
 				for(int j = 0; j < 8; j++){
 					if(chip8->memory[chip8->I + i] & mask){
 						uint16_t memC = (Xc + j) % 64 + ((Yc + i) % 32) * 64;
-						chip8->video[memC] ^= 1;
+						chip8->video[memC] ^= 0xFFFFFFFF;
 						if(chip8->video[memC] == 0)
 							chip8->V[0xF] = 1;
 					}
@@ -154,28 +175,35 @@ void decode_chip8(Chip8* chip8) {
 					chip8->V[X] = chip8->V[X] ^ chip8->V[Y];
 					break;
 				case 4:
-					if(chip8->V[Y] + chip8->V[X] < chip8->V[X])
+					if(x + y >= 256)
 						chip8->V[0xF] = 1;
 					else chip8->V[0xF] = 0;
+					if(X != 0xF)
+						chip8->V[X] += y;
 					break;
 				case 5:
-					if(chip8->V[X] - chip8->V[Y] > chip8->V[X])
+					if(x < y)
 						chip8->V[0xF] = 0;
 					else chip8->V[0xF] = 1;
+					if(X != 0xF)
+						chip8->V[X] -= y;
 					break;
 				case 6:
-					chip8->V[0xF] = chip8->V[X] | 0x0001;
-					chip8->V[X] >>= 1;
+					chip8->V[0xF] = (x & 0x001) == 1;
+					if(X != 0xF)
+						chip8->V[X] = x >> 1;
 					break;
 				case 7:
-					if(chip8->V[Y] < chip8->V[X])
+					if(y < x)
 						chip8->V[0xF] = 0;
 					else chip8->V[0xF] = 1;
-					chip8->V[X] -= chip8->V[Y];
+					if(X != 0xF)
+						chip8->V[X] = y - x;
 					break;
 				case 0xE:
-					chip8->V[0xF] = chip8->V[X] | 0x80;
-					chip8->V[X] <<= 1;
+					chip8->V[0xF] = (x & 0x80) >> 7;
+					if(X != 0xF)
+						chip8->V[X] = x << 1;
 					break;
 			}
 			break;
@@ -210,12 +238,12 @@ void decode_chip8(Chip8* chip8) {
 					chip8->memory[chip8->I + 2] = chip8->V[X] % 10;
 					break;
 				case 0x55:
-					for(int i = chip8->I; i <= chip8->I + chip8->V[X]; i++){
+					for(int i = chip8->I; i <= chip8->I + X; i++){
 						chip8->memory[i] = chip8->V[i - chip8->I];
 					}
 					break;
 				case 0x65:
-					for(int i = chip8->I; i <= chip8->I + chip8->V[X]; i++){
+					for(int i = chip8->I; i <= chip8->I + X; i++){
 						chip8->V[i - chip8->I] = chip8->memory[i];
 					}
 					break;
