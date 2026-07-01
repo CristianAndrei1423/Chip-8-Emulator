@@ -1,0 +1,199 @@
+// processor logic
+#include "chip8.h"
+
+void init_chip8(Chip8* chip8) {
+
+    // zero out whole structure
+    memset(chip8, 0, sizeof(Chip8));
+
+    // program counter initialized to 0x200
+    chip8->pc = 0x200;
+
+    // TODO : load fonts into stack
+}
+
+int load_chip8(Chip8* chip8, char* path){
+
+    FILE *ptr;
+
+    ptr = fopen(path, "r");
+
+	if(!ptr) return 0;
+
+	// make sure to load the game in the unreserved part of the memory
+	size_t bytesRead = fread((chip8->memory + 0x200), 1, sizeof(chip8->memory) - 0x200, ptr);
+
+	if(ferror(ptr)){
+		fclose(ptr);
+		return -1;
+	}
+
+	fclose(ptr);
+
+	return (int)bytesRead;
+}
+
+void fetch_chip8(Chip8* chip8){
+
+	chip8->opcode = (uint16_t) chip8->memory[chip8->pc];
+
+	chip8->opcode <<= 8;
+
+	chip8->opcode |= (uint16_t) chip8->memory[chip8->pc + 1];
+
+	chip8->pc += 2;
+}
+
+void decode_chip8(Chip8* chip8) {
+	uint16_t operation = (chip8->opcode & 0xF000) >> 12;
+
+	uint16_t X, Y, N, NN, NNN;
+	X = (uint8_t)(chip8->opcode & 0x0F00) >> 8;
+	Y = (uint8_t)(chip8->opcode & 0x00F0) >> 4;
+	N = (uint8_t)chip8->opcode & 0x000F;
+	NN = (uint8_t)chip8->opcode & 0x00FF;
+	NNN = chip8->opcode & 0x0FFF;
+
+	switch (operation) {
+		case 1:
+			// Jump
+			chip8->pc = NNN;
+			break;
+		case 2:
+			// Call
+			chip8->stack[chip8->sp++] = chip8->pc;
+			chip8->pc = NNN;
+			break;
+		case 3:
+			// Skip
+			if(chip8->V[X] == NN)
+				chip8->pc += 2;
+			break;
+		case 4:
+			// Skip
+			if(chip8->V[X] != NN)
+				chip8->pc += 2;
+			break;
+		case 5:
+			// Skip
+			if(chip8->V[X] == chip8->V[Y])
+				chip8->pc += 2;
+			break;
+		case 6:
+			// Set
+			chip8->V[X] = NN;
+			break;
+		case 7:
+			// Add
+			chip8->V[X] += NN;
+			break;
+		case 9:
+			// Skip
+			if(chip8->V[X] != chip8->V[Y])
+				chip8->pc += 2;
+			break;
+		case 0xA:
+			// Set Index
+			chip8->I = NNN;
+			break;
+		case 0xB:
+			// Jump with offset
+			chip8->pc = NNN + chip8->V[0];
+			break;
+		case 0xC:
+			// Random
+			chip8->V[X] = ((uint8_t)(rand() % 255)) & NN;
+			break;
+		case 0xD:
+			// Display
+			// TODO
+			break;
+		case 0:
+			switch(chip8->opcode) {
+				case 0x00E0:
+					// Clear TODO
+					break;
+				case 0x00EE:
+					// Return
+					chip8->pc = chip8->stack[chip8->sp--];
+					break;
+			}
+		case 8:
+			switch(N){
+				case 0:
+					chip8->V[X] = chip8->V[Y];
+					break;
+				case 1:
+					chip8->V[X] = chip8->V[X] | chip8->V[Y];
+					break;
+				case 2:
+					chip8->V[X] = chip8->V[X] & chip8->V[Y];
+					break;
+				case 3:
+					chip8->V[X] = chip8->V[X] ^ chip8->V[Y];
+					break;
+				case 4:
+					if(chip8->V[Y] + chip8->V[X] < chip8->V[X])
+						chip8->V[0xF] = 1;
+					chip8->V[0xF] = 0;
+					break;
+				case 5:
+					if(chip8->V[X] - chip8->V[Y] > chip8->V[X])
+						chip8->V[0xF] = 0;
+					chip8->V[0xF] = 1;
+					break;
+				case 6:
+					chip8->V[0xF] = chip8->V[X] | 0x0001;
+					chip8->V[X] >>= 1;
+					break;
+				case 7:
+					if(chip8->V[Y] < chip8->V[X])
+						chip8->V[0xF] = 0;
+					else chip8->V[0xF] = 1;
+					chip8->V[X] -= chip8->V[Y];
+					break;
+				case 8:
+					chip8->V[0xF] = chip8->V[X] | 0x1000;
+					chip8->V[X] <<= 1;
+					break;
+			}
+		case 0xE:
+			if(NN == 0x9E && chip8->keypad[chip8->V[X]] == 1)
+				// Omite instructiunea urmatoare
+				chip8->pc += 2;
+			else if(NN == 0xA1 && chip8->keypad[chip8->V[X]] == 0)
+				// Omite instructiunea urmatoare
+				chip8->pc += 2;
+		case 0xF:
+			switch(NN) {
+				case 0x07:
+					chip8->V[X] = chip8->delay_timer;
+					break;
+				case 0x15:
+					chip8->delay_timer = chip8->V[X];
+					break;
+				case 0x18:
+					chip8->sound_timer = chip8->V[X];
+					break;
+				case 0x1E:
+					chip8->I += chip8->V[X];
+					break;
+				case 0x29:
+					// TODO : chip8->I = Adresa de memorie a spriteului coresp caracterului hexazecimal stocat in VX
+					break;
+				case 0x33:
+					// TODO
+					break;
+				case 0x55:
+					for(int i = chip8->I; i <= chip8->I + chip8->V[X]; i++){
+						chip8->memory[i] = chip8->V[i - chip8->I];
+					}
+					break;
+				case 0x65:
+					for(int i = chip8->I; i <= chip8->I + chip8->V[X]; i++){
+						chip8->V[i - chip8->I] = chip8->memory[i];
+					}
+					break;
+			}
+	}
+}
