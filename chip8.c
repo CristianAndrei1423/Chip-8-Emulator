@@ -129,8 +129,8 @@ void decode_execute_chip8(Chip8* chip8) {
 			// Display
 			
 			// first initialize start coordonates
-			uint8_t Xc = chip8->V[X];
-			uint8_t Yc = chip8->V[Y];
+			uint8_t Xc = chip8->V[X] % 64;
+			uint8_t Yc = chip8->V[Y] % 32;
 
 			// Draw
 			chip8->V[0xF] = 0;
@@ -138,7 +138,10 @@ void decode_execute_chip8(Chip8* chip8) {
 				uint8_t mask = 0x80;
 				for(int j = 0; j < 8; j++){
 					if(chip8->memory[chip8->I + i] & mask){
-						uint16_t memC = (Xc + j) % 64 + ((Yc + i) % 32) * 64;
+						if(Xc + j >= 64 || Yc + i >= 32)
+							continue;
+
+						uint16_t memC = (Xc + j) + (Yc + i) * 64;
 						chip8->video[memC] ^= 0xFFFFFFFF;
 						if(chip8->video[memC] == 0)
 							chip8->V[0xF] = 1;
@@ -166,13 +169,19 @@ void decode_execute_chip8(Chip8* chip8) {
 					chip8->V[X] = chip8->V[Y];
 					break;
 				case 1:
-					chip8->V[X] = chip8->V[X] | chip8->V[Y];
+					chip8->V[0xF] = 0;
+					if(X != 0xF)
+						chip8->V[X] = x | y;
 					break;
 				case 2:
-					chip8->V[X] = chip8->V[X] & chip8->V[Y];
+					chip8->V[0xF] = 0;
+					if(X != 0xF)
+						chip8->V[X] = x & y;
 					break;
 				case 3:
-					chip8->V[X] = chip8->V[X] ^ chip8->V[Y];
+					chip8->V[0xF] = 0;
+					if(X != 0xF)
+						chip8->V[X] = x ^ y;
 					break;
 				case 4:
 					if(x + y >= 256)
@@ -189,9 +198,9 @@ void decode_execute_chip8(Chip8* chip8) {
 						chip8->V[X] -= y;
 					break;
 				case 6:
-					chip8->V[0xF] = (x & 0x001) == 1;
+					chip8->V[0xF] = (y & 0x001) == 1;
 					if(X != 0xF)
-						chip8->V[X] = x >> 1;
+						chip8->V[X] = y >> 1;
 					break;
 				case 7:
 					if(y < x)
@@ -201,9 +210,9 @@ void decode_execute_chip8(Chip8* chip8) {
 						chip8->V[X] = y - x;
 					break;
 				case 0xE:
-					chip8->V[0xF] = (x & 0x80) >> 7;
+					chip8->V[0xF] = (y & 0x80) >> 7;
 					if(X != 0xF)
-						chip8->V[X] = x << 1;
+						chip8->V[X] = y << 1;
 					break;
 			}
 			break;
@@ -241,11 +250,13 @@ void decode_execute_chip8(Chip8* chip8) {
 					for(int i = chip8->I; i <= chip8->I + X; i++){
 						chip8->memory[i] = chip8->V[i - chip8->I];
 					}
+					chip8->I = chip8->I + X + 1;
 					break;
 				case 0x65:
 					for(int i = chip8->I; i <= chip8->I + X; i++){
 						chip8->V[i - chip8->I] = chip8->memory[i];
 					}
+					chip8->I = chip8->I + X + 1;
 					break;
 			}
 		break;
