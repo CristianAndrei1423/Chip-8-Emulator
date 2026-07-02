@@ -22,6 +22,26 @@ void precompute_keymap(uint8_t keymap[], int size){
     keymap['v'] = 0xF;
 }
 
+void audio_callback(void* userdata, Uint8* stream, int len){
+    Chip8* chip8 = (Chip8*)userdata;
+    int16_t* buffer = (int16_t*)stream;
+    int samples = len / sizeof(int16_t);
+    int amplitude = 3000;
+
+    static int s = 0;
+
+    for(int i = 0; i < samples; i++){
+        if(chip8->sound_timer > 0){
+            int samples_per_cycle = 44100 / 440;
+            int position_in_cycle = s % samples_per_cycle;
+            buffer[i] = (position_in_cycle < samples_per_cycle / 2) ? amplitude : -amplitude;
+        } else {
+            buffer[i] = 0;
+        }
+        s++;
+    }
+}
+
 int main(int argc, char* argv[]){
 
     if(argc == 1){
@@ -37,19 +57,32 @@ int main(int argc, char* argv[]){
 
     // initialize the game window
 
-    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
     SDL_Window* window = SDL_CreateWindow("CHIP-8", SDL_WINDOWPOS_CENTERED,
     SDL_WINDOWPOS_CENTERED, 640, 320, SDL_WINDOW_SHOWN);
 
     // initialize the renderer
 
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, 0);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 
     // initialize texture
 
     SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
     SDL_TEXTUREACCESS_STREAMING, 64, 32);
+
+    // initialize sound
+
+    SDL_AudioSpec want, have;
+    SDL_zero(want);
+    want.freq = 44100;
+    want.format = AUDIO_S16SYS;
+    want.channels = 1;
+    want.samples = 2048;
+    want.callback = audio_callback;
+    want.userdata = &mainChip;
+
+    SDL_AudioDeviceID audioDevice = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
 
     // precompute the key map
     uint8_t keymap[256];
@@ -108,6 +141,11 @@ int main(int argc, char* argv[]){
             SDL_RenderClear(renderer);
             SDL_RenderCopy(renderer, texture, NULL, NULL);
             SDL_RenderPresent(renderer);
+
+            // handle the sound
+
+            SDL_PauseAudioDevice(audioDevice, mainChip.sound_timer > 0 ? 0 : 1);
+
         }
     }
 
