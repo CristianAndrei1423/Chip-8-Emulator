@@ -30,6 +30,9 @@ void init_chip8(Chip8* chip8) {
 
     // load fonts into stack
 	memcpy(chip8->memory + 0x50, chip8_fontset, sizeof(chip8_fontset));
+
+	// waitkey shouldn't wait on nothing on default
+	chip8->waitkey = 17;
 }
 
 uint8_t load_chip8(Chip8* chip8, char* path){
@@ -257,6 +260,34 @@ void decode_execute_chip8(Chip8* chip8) {
 						chip8->V[i - chip8->I] = chip8->memory[i];
 					}
 					chip8->I = chip8->I + X + 1;
+					break;
+				case 0x0A:
+					// Wait for Key
+					if(chip8->waitkey == 17){
+						// Wait for Key was decoded, need to block execution
+						chip8->pc -= 2;
+						// put it on wait for key state
+						chip8->waitkey = 16;
+					}
+					else if(chip8->waitkey == 16) {
+						// is waiting for key, poll each key to see if any is
+						// pressed, take first one that you see pressed
+						for(int i = 0; i < 16; i++){
+							if(chip8->keypad[i] == 1){
+								chip8->waitkey = i;
+								break;
+							}
+						}
+						chip8->pc -= 2;
+					} else {
+						// check if the key was released
+						if(chip8->keypad[chip8->waitkey] == 0){
+							chip8->V[X] = chip8->waitkey;
+							chip8->waitkey = 17;
+						} else{
+							chip8->pc -= 2;
+						}
+					}
 					break;
 			}
 		break;

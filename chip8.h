@@ -21,6 +21,7 @@ typedef struct {
     uint32_t video[64 * 32]; // monitor
 
     uint16_t opcode; // current instruction
+    uint8_t waitkey; // wait for key flag and value
 } Chip8;
 
 // initialize hardware
